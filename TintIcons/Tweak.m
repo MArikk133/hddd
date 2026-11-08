@@ -26,6 +26,7 @@ typedef struct {
 
 static BOOL  gEnabled   = YES;
 static BOOL  gFallback  = YES;
+static BOOL  gGradient  = YES; // лёгкий вертикальный градиент плитки (как в iOS 18)
 static float gThreshold = 0.22f;
 static float gFg[3]     = {0.949f, 0.663f, 0.745f}; // #F2A9BE — цвет глифа
 static float gBg[3]     = {0.137f, 0.137f, 0.149f}; // #232326 — цвет плитки
@@ -51,6 +52,7 @@ static void TILoadPrefs(void) {
 	id v;
 	if ((v = TIPref(CFSTR("enabled"))))    gEnabled   = [v boolValue];
 	if ((v = TIPref(CFSTR("fallback"))))   gFallback  = [v boolValue];
+	if ((v = TIPref(CFSTR("gradient"))))   gGradient  = [v boolValue];
 	if ((v = TIPref(CFSTR("threshold"))))  gThreshold = fminf(fmaxf([v floatValue], 0.08f), 0.55f);
 	if ((v = TIPref(CFSTR("glyphColor")))) TIParseHex(v, gFg);
 	if ((v = TIPref(CFSTR("bgColor"))))    TIParseHex(v, gBg);
@@ -190,23 +192,40 @@ static UIImage *TIRender(UIImage *src) {
 	float span   = fmaxf(1.f - bgLn, 0.2f);
 	float radius = 0.2237f * (float)w;
 
+	// m: 0 — простая иконка (плитка + плоский значок), 1 — "тоновая" иконка (как iOS 18:
+	// яркость оригинала -> оттенки цвета значка). Между ними плавный переход.
+	float m = gFallback ? TISmooth(0.45f, 0.80f, coverage) : 0.f;
+
 	// --- сборка результата ---
 	for (size_t y = 0; y < h; y++) {
+		float yn   = (float)y / (float)(h - 1);
+		float grad = gGradient ? 1.f + 0.30f * (0.5f - yn) : 1.f; // сверху светлее, снизу темнее
+		float bgPix[3];
+		for (int k = 0; k < 3; k++) bgPix[k] = fminf(gBg[k] * grad, 1.f);
+
 		for (size_t x = 0; x < w; x++) {
 			size_t i = y * w + x;
 			float a = al[i];
 			if (unmasked) a *= TIRoundRectCover((float)x, (float)y, (float)w, (float)h, radius);
 
-			float t;
-			if (complex) {
-				float L = TILum(&rgb[i * 3]);
-				if (invert) L = 1.f - L;
-				t = fminf(fmaxf((L - bgLn) / span, 0.f), 1.f);
-			} else {
-				t = gl[i];
-			}
+			// яркость относительно фона (отрицательная = темнее фона)
+			float L = TILum(&rgb[i * 3]);
+			if (invert) L = 1.f - L;
+			float rel    = (L - bgLn) / span;
+			float relPos = fminf(fmaxf(rel, 0.f), 1.f);
+			float relNeg = fminf(fmaxf(-rel, 0.f), 1.f);
+			float mag    = fminf(fabsf(rel), 1.f);
+
+			// простой режим: значок плоский, но с лёгкой передачей внутренней яркости
+			float tGlyph = gl[i] * (0.62f + 0.38f * powf(mag, 0.8f));
+			// тоновый режим: мягкая кривая, света не доходят до 100% цвета значка
+			float tTone  = 0.94f * powf(relPos, 1.3f);
+			float t      = tGlyph + (tTone - tGlyph) * m;
+			// тени тоновой иконки темнее плитки (сохраняет контуры и детали)
+			float shade  = 1.f - 0.55f * relNeg * m;
+
 			for (int k = 0; k < 3; k++) {
-				float c = gBg[k] + (gFg[k] - gBg[k]) * t;
+				float c = (bgPix[k] + (gFg[k] - bgPix[k]) * t) * shade;
 				px[i * 4 + k] = (uint8_t)lroundf(fminf(fmaxf(c, 0.f), 1.f) * a * 255.f);
 			}
 			px[i * 4 + 3] = (uint8_t)lroundf(fminf(fmaxf(a, 0.f), 1.f) * 255.f);
