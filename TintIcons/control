@@ -1,0 +1,9 @@
+Package: com.user.tinticons
+Name: TintIcons
+Depends: mobilesubstrate, preferenceloader, firmware (>= 15.0)
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: Тонированные иконки: тёмная плитка и цветной глиф, цвета настраиваются в Настройках
+Maintainer: you
+Author: you
+Section: Tweaks
