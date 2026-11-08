@@ -10,24 +10,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tools
-        run: |
-          brew install ldid dpkg make xz
-          echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
-
       - name: Install Theos
-        run: |
-          git clone --recursive --depth=1 https://github.com/theos/theos.git "$HOME/theos"
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-
-      - name: Install iOS SDKs
-        run: |
-          git clone --depth=1 https://github.com/theos/sdks.git /tmp/sdks
-          cp -R /tmp/sdks/iPhoneOS*.sdk "$HOME/theos/sdks/"
+        uses: Randomblock1/theos-action@v1
 
       - name: Build (rootless)
         run: make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
